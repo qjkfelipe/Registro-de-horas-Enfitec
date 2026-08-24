@@ -248,8 +248,14 @@ if ($rota === '/gestao/membros' && $metodo === 'POST') {
 
 if (preg_match('#^/gestao/membros/(\d+)/ativo$#', $rota, $mm) && $metodo === 'POST') {
     exigir_gestor($PDO, $CONFIG);
+    $id = (int) $mm[1];
     $ativo = !empty(corpo_json()['ativo']) ? 1 : 0;
-    $PDO->prepare('UPDATE membros SET ativo = ? WHERE id = ?')->execute([$ativo, (int) $mm[1]]);
+    // Contas de gestão não podem ser desativadas (evita travar a própria gestão).
+    $alvo = membro_por_id($PDO, $id);
+    if ($alvo && $alvo['role'] === 'gestor' && $ativo === 0) {
+        erro('Não é possível desativar uma conta de gestão.', 403);
+    }
+    $PDO->prepare('UPDATE membros SET ativo = ? WHERE id = ?')->execute([$ativo, $id]);
     responder(['ok' => true]);
 }
 

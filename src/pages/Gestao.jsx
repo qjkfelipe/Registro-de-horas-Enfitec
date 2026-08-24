@@ -359,10 +359,14 @@ export default function Gestao() {
                     <td className="setores">{m.email}</td>
                     <td>{m.role === 'gestor' ? 'Gestor' : 'Membro'}</td>
                     <td className="num">
-                      <button className={m.ativo ? 'btn btn-ghost' : 'btn btn-primary'}
-                        onClick={() => alternarAtivo(m)}>
-                        {m.ativo ? 'Desativar' : 'Ativar'}
-                      </button>
+                      {m.role === 'gestor' ? (
+                        <span className="setores">conta fixa</span>
+                      ) : (
+                        <button className={m.ativo ? 'btn btn-ghost' : 'btn btn-primary'}
+                          onClick={() => alternarAtivo(m)}>
+                          {m.ativo ? 'Desativar' : 'Ativar'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
