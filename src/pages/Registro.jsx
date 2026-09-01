@@ -19,6 +19,8 @@ const TIPOS = [
   'Reunião de alinhamento',
   'Reunião com cliente',
   'Criação de conteúdo',
+  'Faxina na sala',
+  'Outro',
 ]
 
 const hoje = () => new Date().toISOString().slice(0, 10)
