@@ -4,9 +4,15 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import logoEnfitecFull from '../assets/logo-enfitec-full.jpg'
 import {
-  getMembro, logout, resumoGestao, analiseGestao,
+  getMembro, logout, resumoGestao, analiseGestao, registrosGestao, totalMembros,
   listarMembros, salvarMembro, definirAtivoMembro,
 } from '../lib/api'
+
+// "2026-08-19" -> "19/08"
+function formatarData(iso) {
+  const [, mes, dia] = String(iso).split('-')
+  return `${dia}/${mes}`
+}
 
 // Desenha um gráfico de barras horizontais dentro do PDF (jsPDF). Retorna o novo Y.
 function desenharBarrasPDF(doc, titulo, dados, y) {
@@ -14,13 +20,14 @@ function desenharBarrasPDF(doc, titulo, dados, y) {
   doc.setFontSize(13); doc.setTextColor(10, 44, 84)
   doc.text(titulo, 14, y); y += 7
   const max = Math.max(...dados.map((d) => d.total_minutos), 1)
+  const soma = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
   const larguraTotal = 182
   doc.setFontSize(9)
   for (const d of dados) {
     if (y > 282) { doc.addPage(); y = 20 }
     doc.setTextColor(40, 40, 40)
     doc.text(String(d.rotulo), 14, y)
-    doc.text(formatarMinutos(d.total_minutos), 196, y, { align: 'right' })
+    doc.text(`${formatarMinutos(d.total_minutos)}  ${Math.round((d.total_minutos / soma) * 100)}%`, 196, y, { align: 'right' })
     y += 2
     doc.setFillColor(231, 238, 247); doc.rect(14, y, larguraTotal, 2.5, 'F')
     doc.setFillColor(10, 44, 84); doc.rect(14, y, larguraTotal * (d.total_minutos / max), 2.5, 'F')
@@ -29,19 +36,106 @@ function desenharBarrasPDF(doc, titulo, dados, y) {
   return y + 2
 }
 
-// Gráfico de barras horizontais (série única, magnitude) — cor da marca, rótulos diretos.
+// Gráfico de colunas (barras verticais) no PDF.
+function desenharColunasPDF(doc, titulo, dados, y) {
+  if (y > 225) { doc.addPage(); y = 20 }
+  doc.setFontSize(13); doc.setTextColor(10, 44, 84); doc.text(titulo, 14, y); y += 6
+  const max = Math.max(...dados.map((d) => d.total_minutos), 1)
+  const soma = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
+  const left = 16, fullW = 180, top = y + 6, base = y + 44
+  const n = dados.length, step = fullW / n, bw = Math.min(step * 0.5, 22)
+  doc.setDrawColor(210); doc.line(left, base, left + fullW, base)
+  dados.forEach((d, i) => {
+    const cx = left + step * i + step / 2
+    const bh = (d.total_minutos / max) * (base - top)
+    doc.setFillColor(10, 44, 84); doc.rect(cx - bw / 2, base - bh, bw, bh, 'F')
+    doc.setFontSize(6.5); doc.setTextColor(40, 40, 40)
+    doc.text(`${formatarMinutos(d.total_minutos)} ${Math.round((d.total_minutos / soma) * 100)}%`, cx, base - bh - 1.5, { align: 'center' })
+    doc.text(truncar(d.rotulo, 16), cx, base + 4, { align: 'center' })
+  })
+  return base + 10
+}
+
+// Gráfico de linhas no PDF.
+function desenharLinhasPDF(doc, titulo, dados, y) {
+  if (y > 225) { doc.addPage(); y = 20 }
+  doc.setFontSize(13); doc.setTextColor(10, 44, 84); doc.text(titulo, 14, y); y += 6
+  const max = Math.max(...dados.map((d) => d.total_minutos), 1)
+  const soma = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
+  const left = 22, fullW = 168, top = y + 6, base = y + 44
+  const n = dados.length
+  const px = (i) => (n === 1 ? left + fullW / 2 : left + (fullW / (n - 1)) * i)
+  const py = (v) => base - (v / max) * (base - top)
+  doc.setDrawColor(210); doc.line(left - 4, base, left + fullW + 4, base)
+  doc.setDrawColor(10, 44, 84); doc.setLineWidth(0.7)
+  for (let i = 0; i < n - 1; i++) {
+    doc.line(px(i), py(dados[i].total_minutos), px(i + 1), py(dados[i + 1].total_minutos))
+  }
+  doc.setLineWidth(0.2)
+  dados.forEach((d, i) => {
+    const x = px(i), yv = py(d.total_minutos)
+    doc.setFillColor(10, 44, 84); doc.circle(x, yv, 1.1, 'F')
+    doc.setFontSize(6.5); doc.setTextColor(40, 40, 40)
+    doc.text(`${formatarMinutos(d.total_minutos)} ${Math.round((d.total_minutos / soma) * 100)}%`, x, yv - 2.5, { align: 'center' })
+    doc.text(truncar(d.rotulo, 16), x, base + 4, { align: 'center' })
+  })
+  return base + 10
+}
+
+// Gráfico de pizza no PDF (fatias + legenda ao lado).
+function desenharPizzaPDF(doc, titulo, dados, y) {
+  if (y > 210) { doc.addPage(); y = 20 }
+  doc.setFontSize(13); doc.setTextColor(10, 44, 84); doc.text(titulo, 14, y); y += 8
+  const soma = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
+  const cx = 38, cy = y + 26, R = 24
+  let ang = -Math.PI / 2
+  dados.forEach((d, i) => {
+    const fatia = (d.total_minutos / soma) * 2 * Math.PI
+    const passos = Math.max(2, Math.ceil(fatia / 0.15))
+    const [r, g, b] = CORES_PIZZA_RGB[i % CORES_PIZZA_RGB.length]
+    doc.setFillColor(r, g, b)
+    for (let s = 0; s < passos; s++) {
+      const a0 = ang + fatia * (s / passos), a1 = ang + fatia * ((s + 1) / passos)
+      doc.triangle(cx, cy, cx + R * Math.cos(a0), cy + R * Math.sin(a0), cx + R * Math.cos(a1), cy + R * Math.sin(a1), 'F')
+    }
+    ang += fatia
+  })
+  let ly = y + 4
+  doc.setFontSize(9)
+  dados.forEach((d, i) => {
+    const [r, g, b] = CORES_PIZZA_RGB[i % CORES_PIZZA_RGB.length]
+    doc.setFillColor(r, g, b); doc.rect(74, ly - 3, 4, 4, 'F')
+    doc.setTextColor(40, 40, 40)
+    doc.text(`${truncar(d.rotulo, 30)}   ${formatarMinutos(d.total_minutos)} · ${Math.round((d.total_minutos / soma) * 100)}%`, 80, ly)
+    ly += 7
+  })
+  return Math.max(cy + R, ly) + 6
+}
+
+// Cores das fatias da pizza (família azul-marinho, do escuro ao claro).
+const CORES_PIZZA = ['#0a2c54', '#1a4b82', '#2f6fb0', '#4f8bcb', '#7aa9dd', '#a9c7ea', '#c9dcf1']
+const CORES_PIZZA_RGB = [
+  [10, 44, 84], [26, 75, 130], [47, 111, 176], [79, 139, 203],
+  [122, 169, 221], [169, 199, 234], [201, 220, 241],
+]
+const truncar = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '.' : String(s))
+
+const pct = (v, total) => (total ? Math.round((v / total) * 100) : 0)
+
+// Gráfico de barras horizontais (magnitude) com valor e porcentagem.
 function GraficoBarras({ dados, vazio }) {
   if (!dados || dados.length === 0) {
     return <div className="empty"><p>{vazio}</p></div>
   }
   const max = Math.max(...dados.map((d) => d.total_minutos)) || 1
+  const total = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
   return (
     <ul className="grafico" role="list">
       {dados.map((d) => (
         <li key={d.rotulo} className="grafico-linha">
           <div className="grafico-topo">
             <span>{d.rotulo}</span>
-            <span className="valor">{formatarMinutos(d.total_minutos)}</span>
+            <span className="valor">{formatarMinutos(d.total_minutos)} · {pct(d.total_minutos, total)}%</span>
           </div>
           <div className="grafico-trilho">
             <div className="grafico-barra"
@@ -51,6 +145,117 @@ function GraficoBarras({ dados, vazio }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// Gráfico de pizza (rosca) com legenda mostrando valor e porcentagem.
+function GraficoPizza({ dados, vazio }) {
+  if (!dados || dados.length === 0) {
+    return <div className="empty"><p>{vazio}</p></div>
+  }
+  const total = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
+  const size = 168, stroke = 32, r = (size - stroke) / 2, c = size / 2, C = 2 * Math.PI * r
+  let acumulado = 0
+  return (
+    <div className="pizza-wrap">
+      <svg className="pizza-svg" viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
+        {dados.map((d, i) => {
+          const frac = d.total_minutos / total
+          const dash = Math.max(frac * C - 2, 0) // 2px de respiro entre fatias
+          const el = (
+            <circle key={i} cx={c} cy={c} r={r} fill="none"
+              stroke={CORES_PIZZA[i % CORES_PIZZA.length]} strokeWidth={stroke}
+              strokeDasharray={`${dash} ${C - dash}`} strokeDashoffset={-acumulado}
+              transform={`rotate(-90 ${c} ${c})`}>
+              <title>{`${d.rotulo}: ${formatarMinutos(d.total_minutos)} (${pct(d.total_minutos, total)}%)`}</title>
+            </circle>
+          )
+          acumulado += frac * C
+          return el
+        })}
+      </svg>
+      <ul className="pizza-legenda">
+        {dados.map((d, i) => (
+          <li key={d.rotulo}>
+            <span className="pizza-cor" style={{ background: CORES_PIZZA[i % CORES_PIZZA.length] }} />
+            <span className="pizza-rot">{d.rotulo}</span>
+            <span className="pizza-val">{formatarMinutos(d.total_minutos)} · {pct(d.total_minutos, total)}%</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// Gráfico de colunas (barras verticais) com valor no topo e porcentagem.
+function GraficoColunas({ dados, vazio }) {
+  if (!dados || dados.length === 0) {
+    return <div className="empty"><p>{vazio}</p></div>
+  }
+  const total = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
+  const max = Math.max(...dados.map((d) => d.total_minutos), 1)
+  const W = 600, base = 190, top = 26, left = 8, right = 8
+  const step = (W - left - right) / dados.length
+  const bw = Math.min(step * 0.6, 64)
+  return (
+    <div className="svg-chart-wrap">
+      <svg viewBox={`0 0 ${W} 250`} className="svg-chart" preserveAspectRatio="xMidYMid meet">
+        <line x1={left} y1={base} x2={W - right} y2={base} stroke="var(--border)" strokeWidth="1" />
+        {dados.map((d, i) => {
+          const cx = left + step * i + step / 2
+          const bh = (d.total_minutos / max) * (base - top)
+          const y = base - bh
+          return (
+            <g key={d.rotulo}>
+              <rect x={cx - bw / 2} y={y} width={bw} height={bh} rx="3" fill="var(--brand)">
+                <title>{`${d.rotulo}: ${formatarMinutos(d.total_minutos)} (${pct(d.total_minutos, total)}%)`}</title>
+              </rect>
+              <text x={cx} y={y - 5} textAnchor="middle" className="svg-valor">
+                {formatarMinutos(d.total_minutos)} · {pct(d.total_minutos, total)}%
+              </text>
+              <text x={cx} y={base + 12} textAnchor="end" className="svg-rot"
+                transform={`rotate(-28 ${cx} ${base + 12})`}>{d.rotulo}</text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
+  )
+}
+
+// Gráfico de linhas com pontos, valor e porcentagem.
+function GraficoLinhas({ dados, vazio }) {
+  if (!dados || dados.length === 0) {
+    return <div className="empty"><p>{vazio}</p></div>
+  }
+  const total = dados.reduce((s, d) => s + d.total_minutos, 0) || 1
+  const max = Math.max(...dados.map((d) => d.total_minutos), 1)
+  const W = 600, base = 190, top = 26, left = 24, right = 24
+  const n = dados.length
+  const px = (i) => (n === 1 ? W / 2 : left + ((W - left - right) / (n - 1)) * i)
+  const py = (v) => base - (v / max) * (base - top)
+  const pontos = dados.map((d, i) => ({ x: px(i), y: py(d.total_minutos), d }))
+  const linha = pontos.map((p) => `${p.x},${p.y}`).join(' ')
+  return (
+    <div className="svg-chart-wrap">
+      <svg viewBox={`0 0 ${W} 250`} className="svg-chart" preserveAspectRatio="xMidYMid meet">
+        <line x1={left} y1={base} x2={W - right} y2={base} stroke="var(--border)" strokeWidth="1" />
+        <polyline points={linha} fill="none" stroke="var(--brand)" strokeWidth="2.5"
+          strokeLinejoin="round" strokeLinecap="round" />
+        {pontos.map((p) => (
+          <g key={p.d.rotulo}>
+            <circle cx={p.x} cy={p.y} r="4.5" fill="var(--brand)">
+              <title>{`${p.d.rotulo}: ${formatarMinutos(p.d.total_minutos)} (${pct(p.d.total_minutos, total)}%)`}</title>
+            </circle>
+            <text x={p.x} y={p.y - 9} textAnchor="middle" className="svg-valor">
+              {formatarMinutos(p.d.total_minutos)} · {pct(p.d.total_minutos, total)}%
+            </text>
+            <text x={p.x} y={base + 12} textAnchor="end" className="svg-rot"
+              transform={`rotate(-28 ${p.x} ${base + 12})`}>{p.d.rotulo}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
   )
 }
 
@@ -88,8 +293,13 @@ export default function Gestao() {
   const [mesView, setMesView] = useState(mesAtual())
   const podeAvancar = mesView < mesAtual()
   const [setorView, setSetorView] = useState('') // '' = todos os setores
+  const [tipoGrafico, setTipoGrafico] = useState('barras') // 'barras' | 'colunas' | 'linhas' | 'pizza'
+  const [verTodos, setVerTodos] = useState(false) // lançamentos detalhados: 5 ou todos
+  const [verTodosTotais, setVerTodosTotais] = useState(false) // horas totais por membro: 5 ou todos
   const [resumo, setResumo] = useState([])
   const [analise, setAnalise] = useState({ por_setor: [], por_atividade: [] })
+  const [lancamentos, setLancamentos] = useState([])
+  const [totais, setTotais] = useState([]) // horas totais por membro (desde o início)
   const [membros, setMembros] = useState([])
   const [novo, setNovo] = useState({ email: '', nome: '', senha: '', role: 'membro' })
 
@@ -107,12 +317,23 @@ export default function Gestao() {
 
   useEffect(() => { carregarMembros() }, [])
   useEffect(() => {
+    // Horas totais por membro respeita o setor (mas não o mês — é "desde o início").
+    totalMembros(setorView).then(setTotais).catch(() => notificar('Erro ao carregar totais'))
+    setVerTodosTotais(false)
+  }, [setorView])
+  useEffect(() => {
     resumoGestao(mesView, setorView).then(setResumo).catch(() => notificar('Erro ao carregar horas'))
     analiseGestao(mesView, setorView).then(setAnalise).catch(() => notificar('Erro ao carregar análise'))
+    registrosGestao(mesView, setorView).then(setLancamentos).catch(() => notificar('Erro ao carregar lançamentos'))
+    setVerTodos(false)
   }, [mesView, setorView])
 
   const topSetor = analise.por_setor[0]
   const topAtividade = analise.por_atividade[0]
+  const Grafico = tipoGrafico === 'pizza' ? GraficoPizza
+    : tipoGrafico === 'colunas' ? GraficoColunas
+      : tipoGrafico === 'linhas' ? GraficoLinhas
+        : GraficoBarras
 
   // Agrega o resumo (por membro+setor) em uma linha por membro.
   const { porMembro, totalGeral } = useMemo(() => {
@@ -162,8 +383,10 @@ export default function Gestao() {
     doc.text(`Setor: ${setorLabel}`, 14, 34)
     doc.text(`Total geral: ${formatarMinutos(totalGeral)}`, 14, 40)
 
-    // Destaques da análise
-    doc.text(`Setor com mais horas: ${topSetor ? `${topSetor.rotulo} (${formatarMinutos(topSetor.total_minutos)})` : '-'}`, 14, 47)
+    // Destaques da análise (o de setor só aparece quando não há filtro de setor)
+    if (setorView === '') {
+      doc.text(`Setor com mais horas: ${topSetor ? `${topSetor.rotulo} (${formatarMinutos(topSetor.total_minutos)})` : '-'}`, 14, 47)
+    }
     doc.text(`Atividade mais trabalhada: ${topAtividade ? `${topAtividade.rotulo} (${formatarMinutos(topAtividade.total_minutos)})` : '-'}`, 14, 53)
 
     const estilo = { styles: { fontSize: 10 }, headStyles: { fillColor: [10, 44, 84] } }
@@ -176,14 +399,81 @@ export default function Gestao() {
       ...estilo,
     })
 
-    // Análise em gráficos (barras)
+    // Análise em gráficos (barras) — "Horas por setor" só quando vendo todos
     let y = doc.lastAutoTable.finalY + 12
-    y = desenharBarrasPDF(doc, 'Horas por setor', analise.por_setor, y)
-    y = desenharBarrasPDF(doc, 'Horas por atividade', analise.por_atividade, y)
-    desenharBarrasPDF(doc, 'Horas por membro', porMembro.map((m) => ({ rotulo: m.nome, total_minutos: m.total })), y)
+    // Usa o mesmo formato que o usuário está visualizando na tela.
+    const desenhaAnalise = tipoGrafico === 'colunas' ? desenharColunasPDF
+      : tipoGrafico === 'linhas' ? desenharLinhasPDF
+        : tipoGrafico === 'pizza' ? desenharPizzaPDF
+          : desenharBarrasPDF
+    if (setorView === '') {
+      y = desenhaAnalise(doc, 'Horas por setor', analise.por_setor, y)
+    }
+    y = desenhaAnalise(doc, 'Horas por atividade', analise.por_atividade, y)
+
+    // Lançamentos detalhados (com descrição)
+    if (lancamentos.length > 0) {
+      if (y > 250) { doc.addPage(); y = 20 }
+      doc.setFontSize(13); doc.setTextColor(10, 44, 84)
+      doc.text('Lançamentos detalhados', 14, y)
+      autoTable(doc, {
+        startY: y + 3,
+        head: [['Data', 'Membro', 'Setor', 'Atividade', 'Horas', 'Descrição']],
+        body: lancamentos.map((l) => [
+          formatarData(l.data), l.nome, l.setor, l.atividade,
+          formatarMinutos(l.minutos), l.descricao || '-',
+        ]),
+        styles: { fontSize: 9, cellWidth: 'wrap' },
+        headStyles: { fillColor: [10, 44, 84] },
+        columnStyles: { 5: { cellWidth: 60 } },
+      })
+    }
+
+    // Horas totais por membro (desde o início — não depende do mês/setor)
+    if (totais.length > 0) {
+      y = doc.lastAutoTable ? doc.lastAutoTable.finalY + 12 : y
+      if (y > 250) { doc.addPage(); y = 20 }
+      doc.setFontSize(13); doc.setTextColor(10, 44, 84)
+      doc.text('Horas totais por membro (desde o início)', 14, y)
+      autoTable(doc, {
+        startY: y + 3,
+        head: [['Membro', 'Lancamentos', 'Horas totais']],
+        body: totais.map((t) => [t.nome, String(t.qtd), formatarMinutos(t.total_minutos)]),
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [10, 44, 84] },
+      })
+    }
 
     const slug = setorView ? '-' + setorView.toLowerCase().normalize('NFD').replace(/[^\w]+/g, '-') : ''
     doc.save(`relatorio-horas-${mesView}${slug}.pdf`)
+  }
+
+  function baixarCSV() {
+    const sep = ';'
+    const esc = (v) => {
+      const s = String(v ?? '')
+      return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+    }
+    const dataBR = (iso) => String(iso).split('-').reverse().join('/')
+    const linhas = [
+      ['Data', 'Membro', 'Setor', 'Atividade', 'Horas', 'Minutos', 'Descrição'],
+      ...lancamentos.map((l) => [
+        dataBR(l.data), l.nome, l.setor, l.atividade,
+        formatarMinutos(l.minutos), l.minutos, l.descricao || '',
+      ]),
+    ]
+    // ﻿ (BOM) para o Excel reconhecer o UTF-8 e exibir os acentos corretamente.
+    const csv = '﻿' + linhas.map((l) => l.map(esc).join(sep)).join('\r\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const slug = setorView ? '-' + setorView.toLowerCase().normalize('NFD').replace(/[^\w]+/g, '-') : ''
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `resumo-horas-${mesView}${slug}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
   }
 
   function sair() {
@@ -240,45 +530,34 @@ export default function Gestao() {
             <div className="total">
               <span className="total-label">Total geral</span>
               <span className="total-value">{formatarMinutos(totalGeral)}</span>
+              <span className="total-sub">{lancamentos.length} lançamento(s)</span>
             </div>
-            <button className="btn btn-primary" onClick={baixarPDF} disabled={porMembro.length === 0}>
-              ⬇ Baixar relatório (PDF)
-            </button>
+            <div className="export-botoes">
+              <button className="btn btn-primary" onClick={baixarPDF} disabled={porMembro.length === 0}>
+                ⬇ PDF
+              </button>
+              <button className="btn btn-ghost" onClick={baixarCSV} disabled={lancamentos.length === 0}>
+                ⬇ CSV
+              </button>
+            </div>
           </div>
-
-          {porMembro.length === 0 ? (
-            <div className="empty">
-              <div className="empty-icon" aria-hidden="true">📊</div>
-              <p>Nenhuma hora registrada em {rotuloMes(mesView)}.</p>
-            </div>
-          ) : (
-            <div className="tabela-wrap">
-              <table className="tabela">
-                <thead>
-                  <tr><th>Membro</th><th>Setores</th><th className="num">Lanç.</th><th className="num">Horas</th></tr>
-                </thead>
-                <tbody>
-                  {porMembro.map((m) => (
-                    <tr key={m.nome}>
-                      <td className="forte-nome">{m.nome}</td>
-                      <td className="setores">{m.setores.join(', ')}</td>
-                      <td className="num">{m.qtd}</td>
-                      <td className="num forte">{formatarMinutos(m.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </section>
 
         {/* Análise em gráficos */}
         <div className="stats">
-          <div className="stat-card stat-card--brand">
-            <span className="stat-label">Setor com mais horas</span>
-            <span className="stat-value">{topSetor ? formatarMinutos(topSetor.total_minutos) : '0:00'}</span>
-            <span className="stat-hint">{topSetor ? topSetor.rotulo : '—'}</span>
-          </div>
+          {setorView === '' ? (
+            <div className="stat-card stat-card--brand">
+              <span className="stat-label">Setor com mais horas</span>
+              <span className="stat-value">{topSetor ? formatarMinutos(topSetor.total_minutos) : '0:00'}</span>
+              <span className="stat-hint">{topSetor ? topSetor.rotulo : '—'}</span>
+            </div>
+          ) : (
+            <div className="stat-card stat-card--brand">
+              <span className="stat-label">Total do setor</span>
+              <span className="stat-value">{formatarMinutos(totalGeral)}</span>
+              <span className="stat-hint">{setorView}</span>
+            </div>
+          )}
           <div className="stat-card stat-card--brand">
             <span className="stat-label">Atividade mais trabalhada</span>
             <span className="stat-value">{topAtividade ? formatarMinutos(topAtividade.total_minutos) : '0:00'}</span>
@@ -286,38 +565,136 @@ export default function Gestao() {
           </div>
         </div>
 
-        <div className="grid grid--admin">
-          <section className="panel">
-            <div className="panel-head">
-              <div>
-                <h2 className="panel-title">Horas por setor</h2>
-                <p className="panel-sub">{rotuloMes(mesView)}</p>
-              </div>
-            </div>
-            <GraficoBarras dados={analise.por_setor} vazio="Sem dados neste mês." />
-          </section>
+        {/* Seletor de visualização dos gráficos de análise */}
+        <div className="viz-toggle" role="group" aria-label="Formato dos gráficos">
+          <span className="viz-label">Visualização:</span>
+          <button className={tipoGrafico === 'barras' ? 'ativo' : ''}
+            onClick={() => setTipoGrafico('barras')}>Barras</button>
+          <button className={tipoGrafico === 'colunas' ? 'ativo' : ''}
+            onClick={() => setTipoGrafico('colunas')}>Colunas</button>
+          <button className={tipoGrafico === 'linhas' ? 'ativo' : ''}
+            onClick={() => setTipoGrafico('linhas')}>Linhas</button>
+          <button className={tipoGrafico === 'pizza' ? 'ativo' : ''}
+            onClick={() => setTipoGrafico('pizza')}>Pizza</button>
+        </div>
 
+        {/* "Horas por setor" só faz sentido vendo todos; ao filtrar, some. */}
+        {setorView === '' ? (
+          <div className="grid grid--admin">
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2 className="panel-title">Horas por setor</h2>
+                  <p className="panel-sub">{rotuloMes(mesView)}</p>
+                </div>
+              </div>
+              <Grafico dados={analise.por_setor} vazio="Sem dados neste mês." />
+            </section>
+
+            <section className="panel">
+              <div className="panel-head">
+                <div>
+                  <h2 className="panel-title">Horas por atividade</h2>
+                  <p className="panel-sub">{rotuloMes(mesView)}</p>
+                </div>
+              </div>
+              <Grafico dados={analise.por_atividade} vazio="Sem dados neste mês." />
+            </section>
+          </div>
+        ) : (
           <section className="panel">
             <div className="panel-head">
               <div>
                 <h2 className="panel-title">Horas por atividade</h2>
-                <p className="panel-sub">{rotuloMes(mesView)}</p>
+                <p className="panel-sub">{setorView} · {rotuloMes(mesView)}</p>
               </div>
             </div>
-            <GraficoBarras dados={analise.por_atividade} vazio="Sem dados neste mês." />
+            <Grafico dados={analise.por_atividade} vazio="Sem dados neste mês." />
           </section>
-        </div>
+        )}
 
+        {/* Horas totais por membro (soma de todos os registros, desde o início) */}
         <section className="panel">
           <div className="panel-head">
             <div>
-              <h2 className="panel-title">Horas por membro</h2>
-              <p className="panel-sub">{rotuloMes(mesView)}</p>
+              <h2 className="panel-title">Horas totais por membro</h2>
+              <p className="panel-sub">
+                Desde o início · {setorView ? `setor ${setorView}` : 'todos os setores'}
+              </p>
             </div>
           </div>
-          <GraficoBarras
-            dados={porMembro.map((m) => ({ rotulo: m.nome, total_minutos: m.total }))}
-            vazio="Sem dados neste mês." />
+
+          {totais.length === 0 ? (
+            <div className="empty"><p>Nenhum membro cadastrado.</p></div>
+          ) : (
+            <>
+              <div className="tabela-wrap">
+                <table className="tabela tabela--compacta">
+                  <thead>
+                    <tr><th>Membro</th><th className="num">Lançamentos</th><th className="num">Horas totais</th></tr>
+                  </thead>
+                  <tbody>
+                    {(verTodosTotais ? totais : totais.slice(0, 5)).map((t) => (
+                      <tr key={t.nome} className={t.qtd === 0 ? 'linha-vazia' : ''}>
+                        <td className="forte-nome">{t.nome}</td>
+                        <td className="num">{t.qtd}</td>
+                        <td className="num forte">{formatarMinutos(t.total_minutos)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {totais.length > 5 && (
+                <button className="btn btn-ghost ver-mais" onClick={() => setVerTodosTotais((v) => !v)}>
+                  {verTodosTotais ? 'Ver menos' : `Ver todos (${totais.length})`}
+                </button>
+              )}
+            </>
+          )}
+        </section>
+
+        {/* Lançamentos detalhados (com descrição) */}
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2 className="panel-title">Lançamentos detalhados</h2>
+              <p className="panel-sub">{rotuloMes(mesView)} · {lancamentos.length} lançamento(s)</p>
+            </div>
+          </div>
+
+          {lancamentos.length === 0 ? (
+            <div className="empty"><p>Nenhum lançamento neste mês.</p></div>
+          ) : (
+            <>
+              <div className="tabela-wrap">
+                <table className="tabela tabela--compacta">
+                  <thead>
+                    <tr>
+                      <th>Data</th><th>Membro</th><th>Setor</th><th>Atividade</th>
+                      <th className="num">Horas</th><th>Descrição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(verTodos ? lancamentos : lancamentos.slice(0, 5)).map((l, i) => (
+                      <tr key={i}>
+                        <td className="num">{formatarData(l.data)}</td>
+                        <td className="forte-nome">{l.nome}</td>
+                        <td className="setores">{l.setor}</td>
+                        <td>{l.atividade}</td>
+                        <td className="num forte">{formatarMinutos(l.minutos)}</td>
+                        <td className="descricao-cel">{l.descricao || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {lancamentos.length > 5 && (
+                <button className="btn btn-ghost ver-mais" onClick={() => setVerTodos((v) => !v)}>
+                  {verTodos ? 'Ver menos' : `Ver todos (${lancamentos.length})`}
+                </button>
+              )}
+            </>
+          )}
         </section>
 
         {/* Gestão de membros */}

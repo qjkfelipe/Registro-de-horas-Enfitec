@@ -52,6 +52,7 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
     $membro = membro_por_email($PDO, $email);
     if (!$membro || !(int) $membro['ativo'] || empty($membro['senha_hash'])
         || !password_verify($senha, $membro['senha_hash'])) {
+        sleep(1); // atraso proposital para dificultar força bruta
         erro('E-mail ou senha inválidos.', 401);
     }
     $sessao = jwt_criar(['sub' => (string) $membro['id'], 'tipo' => 'sessao'], $CONFIG['jwt_secret'], $CONFIG['sessao_expira_min']);
@@ -169,6 +170,35 @@ if ($rota === '/gestao/resumo' && $metodo === 'GET') {
     responder($linhas);
 }
 
+// ---- GESTÃO: lançamentos detalhados (só gestor) — com descrição ----
+if ($rota === '/gestao/registros' && $metodo === 'GET') {
+    exigir_gestor($PDO, $CONFIG);
+    [$inicio, $fim] = intervalo_do_mes($_GET['mes'] ?? '');
+    $setor = trim($_GET['setor'] ?? '');
+    $params = [$inicio, $fim];
+    $filtroSetor = '';
+    if ($setor !== '') {
+        $filtroSetor = ' AND r.setor = ?';
+        $params[] = $setor;
+    }
+    $st = $PDO->prepare(
+        "SELECT m.nome AS nome, r.data AS data, r.setor AS setor, r.atividade AS atividade,
+                r.minutos AS minutos, r.descricao AS descricao
+         FROM registros r JOIN membros m ON m.id = r.membro_id
+         WHERE r.data >= ? AND r.data < ?$filtroSetor
+         ORDER BY r.data DESC, m.nome"
+    );
+    $st->execute($params);
+    responder(array_map(fn($l) => [
+        'nome' => $l['nome'],
+        'data' => $l['data'],
+        'setor' => $l['setor'],
+        'atividade' => $l['atividade'],
+        'minutos' => (int) $l['minutos'],
+        'descricao' => $l['descricao'],
+    ], $st->fetchAll()));
+}
+
 // ---- GESTÃO: análise (só gestor) — horas por setor e por atividade ----
 if ($rota === '/gestao/analise' && $metodo === 'GET') {
     exigir_gestor($PDO, $CONFIG);
@@ -199,6 +229,39 @@ if ($rota === '/gestao/analise' && $metodo === 'GET') {
     ]);
 }
 
+// ---- GESTÃO: horas totais por membro (só gestor) — soma TODOS os registros ----
+if ($rota === '/gestao/total-membros' && $metodo === 'GET') {
+    exigir_gestor($PDO, $CONFIG);
+    $setor = trim($_GET['setor'] ?? '');
+    if ($setor !== '') {
+        // Setor específico: só membros que lançaram horas nele (INNER JOIN filtrando o setor).
+        $st = $PDO->prepare(
+            "SELECT m.nome AS nome, SUM(r.minutos) AS total, COUNT(r.id) AS qtd
+             FROM membros m
+             JOIN registros r ON r.membro_id = m.id AND r.setor = ?
+             WHERE m.role = 'membro'
+             GROUP BY m.id, m.nome
+             ORDER BY total DESC, m.nome"
+        );
+        $st->execute([$setor]);
+    } else {
+        // Todos: total de cada membro independente do setor (inclui quem tem 0).
+        $st = $PDO->query(
+            "SELECT m.nome AS nome, COALESCE(SUM(r.minutos), 0) AS total, COUNT(r.id) AS qtd
+             FROM membros m
+             LEFT JOIN registros r ON r.membro_id = m.id
+             WHERE m.role = 'membro'
+             GROUP BY m.id, m.nome
+             ORDER BY total DESC, m.nome"
+        );
+    }
+    responder(array_map(fn($l) => [
+        'nome' => $l['nome'],
+        'total_minutos' => (int) $l['total'],
+        'qtd' => (int) $l['qtd'],
+    ], $st->fetchAll()));
+}
+
 // ---- GESTÃO DE MEMBROS (só gestor) — cadastra/ativa/desativa acessos ----
 if ($rota === '/gestao/membros' && $metodo === 'GET') {
     exigir_gestor($PDO, $CONFIG);
@@ -223,6 +286,9 @@ if ($rota === '/gestao/membros' && $metodo === 'POST') {
         erro('Informe um e-mail válido e o nome.');
     }
     $senhaTexto = trim((string) ($d['senha'] ?? ''));
+    if ($senhaTexto !== '' && strlen($senhaTexto) < 6) {
+        erro('A senha inicial deve ter ao menos 6 caracteres.');
+    }
     $senha = $senhaTexto !== '' ? password_hash($senhaTexto, PASSWORD_DEFAULT) : null;
 
     $existe = membro_por_email($PDO, $email);

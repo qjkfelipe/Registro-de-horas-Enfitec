@@ -1,6 +1,18 @@
-.env
-.claude/
+# Dependências e build
 node_modules/
+dist/
+
+# Variáveis de ambiente (mantém o .env.example)
+.env
+.env.*
+!.env.example
+
+# Ferramentas locais
+.claude/
+
+# Backend: segredos e banco local
 backend/config.php
 backend/*.db
+backend/*.sqlite
+backend/lib/.jwt_secret
 backend/lib/ultimo-link.txt

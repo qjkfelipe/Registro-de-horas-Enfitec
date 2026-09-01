@@ -41,8 +41,8 @@ if (count($args) >= 3) {
     upsert($PDO, $args[1], $args[2], $args[3] ?? 'membro', $args[4] ?? null, isset($args[4]));
 } else {
     echo "Cadastrando membros de exemplo:\n";
-    // Conta de gestão: senha definitiva (TROQUE em produção). Não é provisória.
-    upsert($PDO, 'enfitecjunior@gmail.com', 'Gestão ENFITEC', 'gestor', 'enfitec123', false);
+    // Conta de gestão: senha inicial PROVISÓRIA (obrigatório trocar no 1º acesso).
+    upsert($PDO, 'enfitecjunior@gmail.com', 'Gestão ENFITEC', 'gestor', 'enfitec123', true);
     // Membro de exemplo com senha PROVISÓRIA (troca no 1º acesso).
     upsert($PDO, 'felipe.baseggio@enfitecjunior.com', 'Felipe Baseggio', 'membro', 'senha123', true);
 }

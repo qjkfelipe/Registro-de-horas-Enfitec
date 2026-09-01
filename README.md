@@ -25,19 +25,20 @@ dedicação da equipe com relatórios e análises.
 - **Resumo mensal** navegável (setas para meses anteriores).
 
 ### Para a gestão (papel "gestor")
-- Visão das **horas de toda a equipe** por mês.
-- **Filtro por setor** (Todos / Presidência / Projetos / …) que afeta tabela,
-  gráficos e relatório.
-- **Análise em gráficos**: horas por setor, por atividade e por membro, com
-  destaques (setor com mais horas, atividade mais trabalhada).
-- **Relatório em PDF** do que está sendo visualizado, incluindo a análise.
+- Visão das **horas de toda a equipe** por mês, com **total geral** e nº de lançamentos.
+- **Filtro por setor** (Todos / Presidência / Projetos / …) que afeta os dados,
+  os gráficos e os relatórios.
+- **Análise em gráficos** de horas por setor e por atividade, com seletor de
+  formato (**barras, colunas, linhas ou pizza**), valores e porcentagens.
+- **Lançamentos detalhados** (com descrição) e **horas totais por membro**.
+- **Relatório em PDF** e exportação em **CSV** do que está sendo visualizado.
 - **Cadastro de membros** e **ativar/desativar acessos** (sem depender do TI).
 
 ### Setores e atividades
 - **Setores** (6 diretorias): Presidência, Administrativo-Financeiro, Comercial,
   Projetos, Gestão de Pessoas, Marketing.
 - **Atividades**: Visita técnica, Pesquisa, Desenvolvimento de projeto,
-  Reunião de alinhamento, Reunião com cliente, Criando conteúdo.
+  Reunião de alinhamento, Reunião com cliente, Criação de conteúdo.
 
 ---
 
@@ -117,11 +118,11 @@ npm run dev                          # abre em http://localhost:5173
 ### Contas de exemplo (seed)
 | Papel | E-mail | Senha |
 |---|---|---|
-| Gestão | `enfitecjunior@gmail.com` | `enfitec123` |
+| Gestão | `enfitecjunior@gmail.com` | `enfitec123` (provisória) |
 | Membro | `felipe.baseggio@enfitecjunior.com` | `senha123` (provisória) |
 
-> ⚠️ Troque essas senhas em produção. A senha do membro é provisória: no primeiro
-> acesso o sistema pede para criar uma nova.
+> ⚠️ As duas senhas são **provisórias** — no primeiro acesso o sistema **obriga a
+> criar uma nova**. Em produção, defina a senha do admin ao rodar o `seed.php`.
 
 ---
 
@@ -145,8 +146,10 @@ npm run dev                          # abre em http://localhost:5173
 | GET  | `/registros` | membro | lista os próprios registros |
 | POST | `/registros` | membro | cria um registro |
 | DELETE | `/registros/{id}` | membro | remove um registro seu |
-| GET  | `/gestao/resumo?mes=&setor=` | gestor | horas por membro/setor |
+| GET  | `/gestao/resumo?mes=&setor=` | gestor | horas por membro/setor (mês) |
 | GET  | `/gestao/analise?mes=&setor=` | gestor | horas por setor e atividade |
+| GET  | `/gestao/registros?mes=&setor=` | gestor | lançamentos detalhados |
+| GET  | `/gestao/total-membros?setor=` | gestor | horas totais por membro |
 | GET/POST | `/gestao/membros` | gestor | lista / cadastra membros |
 | POST | `/gestao/membros/{id}/ativo` | gestor | ativa/desativa acesso |
 
@@ -168,6 +171,7 @@ O servidor da UFRGS é **hospedagem PHP + MySQL**. Resumo do deploy (detalhes em
 
 ## Documentos de apoio (`docs/`)
 
+- `GUIA-DEPLOY-UFRGS.md` — passo a passo para publicar no servidor da UFRGS.
 - `CHECKLIST-SERVIDOR-UFRGS.md` — o que confirmar/pedir ao TI.
 - `ROTEIRO-APRESENTACAO.md` — roteiro de apresentação do projeto.
 - `PLANO-SUPABASE.md` — referência histórica (alternativa de hospedagem gerenciada,
@@ -177,8 +181,10 @@ O servidor da UFRGS é **hospedagem PHP + MySQL**. Resumo do deploy (detalhes em
 
 ## Status atual
 
-Sistema funcional: registro de horas, autenticação com troca no 1º acesso,
-painel de gestão com filtro por setor, análise em gráficos e relatório PDF.
-Próximo passo: **deploy no servidor da UFRGS**.
+Aplicação **funcionalmente completa**: registro de horas, autenticação por e-mail +
+senha com troca obrigatória no 1º acesso, painel de gestão com filtro por setor,
+análise em gráficos (barras/colunas/linhas/pizza) e exportação em **PDF e CSV**.
+Hardening de segurança aplicado (ver `docs/CHECKLIST-SERVIDOR-UFRGS.md`).
+Próximo passo: **deploy no servidor da UFRGS** (ver `docs/GUIA-DEPLOY-UFRGS.md`).
 
 Projeto desenvolvido para a **ENFITEC Júnior** — *"Se não for impossível, a gente faz!"*

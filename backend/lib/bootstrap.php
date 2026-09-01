@@ -27,6 +27,16 @@ if (!file_exists($config_path)) {
 }
 $CONFIG = require $config_path;
 
+// Segurança: se o segredo JWT ainda for o placeholder, gera um aleatório forte
+// e persiste num arquivo protegido — evita tokens forjáveis por esquecimento.
+if (($CONFIG['jwt_secret'] ?? '') === 'troque-por-um-segredo-bem-aleatorio') {
+    $arqSegredo = __DIR__ . '/.jwt_secret';
+    if (!file_exists($arqSegredo)) {
+        file_put_contents($arqSegredo, bin2hex(random_bytes(32)));
+    }
+    $CONFIG['jwt_secret'] = trim((string) file_get_contents($arqSegredo));
+}
+
 // ---- CORS ----
 function aplicar_cors(array $config): void
 {

@@ -98,6 +98,16 @@ export function analiseGestao(mes, setor = '') {
   return req(`/gestao/analise?mes=${encodeURIComponent(mes)}${s}`)
 }
 
+export function registrosGestao(mes, setor = '') {
+  const s = setor ? `&setor=${encodeURIComponent(setor)}` : ''
+  return req(`/gestao/registros?mes=${encodeURIComponent(mes)}${s}`)
+}
+
+export function totalMembros(setor = '') {
+  const s = setor ? `?setor=${encodeURIComponent(setor)}` : ''
+  return req(`/gestao/total-membros${s}`)
+}
+
 export function listarMembros() {
   return req('/gestao/membros')
 }

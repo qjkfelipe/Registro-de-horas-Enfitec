@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import logoEnfitecFull from '../assets/logo-enfitec-full.jpg'
 import { getMembro, logout, listarRegistros, criarRegistro, removerRegistro } from '../lib/api'
 
-// Diretorias reais da ENFITEC Júnior.
 const AREAS = [
   'Presidência',
   'Administrativo-Financeiro',
@@ -13,7 +12,6 @@ const AREAS = [
   'Marketing',
 ]
 
-// Atividades registráveis.
 const TIPOS = [
   'Visita técnica',
   'Pesquisa',
