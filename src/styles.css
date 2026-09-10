@@ -177,9 +177,12 @@ body {
 .topbar-name { font-size: 14px; font-weight: 600; color: var(--text); }
 .topbar-email { font-size: 12px; color: var(--muted); }
 
-.content { padding: 28px; max-width: 1080px; width: 100%; margin: 0 auto; }
+.content {
+  padding: 28px; max-width: 1080px; width: 100%; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 24px;   /* espaçamento uniforme entre os tópicos */
+}
 
-.saudacao { margin: 0 0 20px; font-size: 24px; font-weight: 700; }
+.saudacao { margin: 0; font-size: 24px; font-weight: 700; }
 
 /* ---------- Toast de feedback ---------- */
 .toast {
@@ -205,7 +208,6 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-bottom: 24px;
 }
 .stat-card {
   background: var(--panel);
@@ -372,7 +374,6 @@ body {
 /* ---------- Filtro por setor (pílulas) ---------- */
 .filtro-setor {
   display: flex; flex-wrap: wrap; gap: 8px;
-  margin-bottom: 22px;
 }
 .filtro-pill {
   font: inherit; font-size: 13px; font-weight: 600;
@@ -389,7 +390,6 @@ body {
 /* ---------- Seletor de visualização (barras/pizza) ---------- */
 .viz-toggle {
   display: flex; align-items: center; gap: 8px;
-  margin-bottom: 16px;
 }
 .viz-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-right: 2px; }
 .viz-toggle button {
