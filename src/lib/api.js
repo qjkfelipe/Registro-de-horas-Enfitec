@@ -50,7 +50,9 @@ export async function loginSenha(email, senha) {
 }
 
 export async function trocarSenha(nova_senha) {
-  await req('/auth/trocar-senha', { method: 'POST', body: { nova_senha } })
+  const resp = await req('/auth/trocar-senha', { method: 'POST', body: { nova_senha } })
+  // O backend revoga os tokens antigos e devolve um novo — guarda-o p/ a sessão seguir.
+  if (resp && resp.access_token) localStorage.setItem(TOKEN_KEY, resp.access_token)
   const m = getMembro()
   if (m) {
     m.senha_provisoria = false

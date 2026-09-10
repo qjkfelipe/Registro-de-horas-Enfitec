@@ -63,7 +63,7 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
         erro('E-mail ou senha inválidos.', 401);
     }
     rl_sucesso($PDO, $rlChave); // login OK: zera o contador dessa chave
-    $sessao = jwt_criar(['sub' => (string) $membro['id'], 'tipo' => 'sessao'], $CONFIG['jwt_secret'], $CONFIG['sessao_expira_min']);
+    $sessao = jwt_criar(['sub' => (string) $membro['id'], 'tipo' => 'sessao', 'ver' => (int) $membro['token_version']], $CONFIG['jwt_secret'], $CONFIG['sessao_expira_min']);
     responder([
         'access_token' => $sessao,
         'token_type' => 'bearer',
@@ -89,9 +89,13 @@ if ($rota === '/auth/trocar-senha' && $metodo === 'POST') {
         erro('A senha precisa ter ao menos 8 caracteres, incluindo letra maiúscula, número e caractere especial.');
     }
     $hash = password_hash($nova, PASSWORD_DEFAULT);
-    $PDO->prepare('UPDATE membros SET senha_hash = ?, senha_provisoria = 0 WHERE id = ?')
-        ->execute([$hash, $m['id']]);
-    responder(['ok' => true]);
+    // Incrementa token_version p/ revogar todos os tokens antigos desse membro.
+    $novoVer = (int) $m['token_version'] + 1;
+    $PDO->prepare('UPDATE membros SET senha_hash = ?, senha_provisoria = 0, token_version = ? WHERE id = ?')
+        ->execute([$hash, $novoVer, $m['id']]);
+    // Devolve um token novo (com a versão nova) para a sessão atual não cair no login.
+    $novoToken = jwt_criar(['sub' => (string) $m['id'], 'tipo' => 'sessao', 'ver' => $novoVer], $CONFIG['jwt_secret'], $CONFIG['sessao_expira_min']);
+    responder(['ok' => true, 'access_token' => $novoToken]);
 }
 
 if ($rota === '/auth/me' && $metodo === 'GET') {
@@ -313,7 +317,8 @@ if ($rota === '/gestao/membros' && $metodo === 'POST') {
     if ($existe) {
         // Atualiza dados; se uma senha nova foi informada, ela vira provisória (o membro troca no acesso).
         if ($senha) {
-            $PDO->prepare('UPDATE membros SET nome = ?, role = ?, ativo = 1, senha_hash = ?, senha_provisoria = 1 WHERE id = ?')
+            // Reset de senha pelo admin: revoga os tokens atuais do membro (token_version + 1).
+            $PDO->prepare('UPDATE membros SET nome = ?, role = ?, ativo = 1, senha_hash = ?, senha_provisoria = 1, token_version = token_version + 1 WHERE id = ?')
                 ->execute([$nome, $role, $senha, $existe['id']]);
         } else {
             $PDO->prepare('UPDATE membros SET nome = ?, role = ?, ativo = 1 WHERE id = ?')

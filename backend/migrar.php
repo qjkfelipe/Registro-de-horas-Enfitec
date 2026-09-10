@@ -57,6 +57,7 @@ if ($sqlite) {
 foreach ([
     'senha_hash' => $sqlite ? 'TEXT' : 'VARCHAR(255) NULL',
     'senha_provisoria' => $sqlite ? 'INTEGER NOT NULL DEFAULT 0' : 'TINYINT(1) NOT NULL DEFAULT 0',
+    'token_version' => $sqlite ? 'INTEGER NOT NULL DEFAULT 0' : 'INT NOT NULL DEFAULT 0',
 ] as $coluna => $tipo) {
     try {
         $PDO->exec("ALTER TABLE membros ADD COLUMN $coluna $tipo");

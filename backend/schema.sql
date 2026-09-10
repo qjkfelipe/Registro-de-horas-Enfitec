@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS membros (
     ativo      TINYINT(1)   NOT NULL DEFAULT 1,
     senha_hash VARCHAR(255) NULL,                        -- hash da senha (todos os usuários)
     senha_provisoria TINYINT(1) NOT NULL DEFAULT 0,      -- 1 = precisa trocar no 1º acesso
+    token_version INT NOT NULL DEFAULT 0,                -- invalida tokens antigos ao trocar/resetar a senha
     criado_em  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

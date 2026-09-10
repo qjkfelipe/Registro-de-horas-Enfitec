@@ -34,7 +34,15 @@ function membro_logado(PDO $pdo, array $config): ?array
         return null;
     }
     $membro = membro_por_id($pdo, (int) $payload['sub']);
-    return ($membro && (int) $membro['ativo']) ? $membro : null;
+    if (!$membro || !(int) $membro['ativo']) {
+        return null;
+    }
+    // Revogação: o token carrega a versão vigente na emissão. Trocar/resetar a
+    // senha incrementa token_version, invalidando todos os tokens anteriores.
+    if ((int) ($payload['ver'] ?? 0) !== (int) ($membro['token_version'] ?? 0)) {
+        return null;
+    }
+    return $membro;
 }
 
 function exigir_login(PDO $pdo, array $config): array
