@@ -120,7 +120,9 @@ if ($rota === '/registros' && $metodo === 'POST') {
     $minutos = (int) ($d['minutos'] ?? 0);
     $descricao = isset($d['descricao']) && trim((string) $d['descricao']) !== '' ? trim((string) $d['descricao']) : null;
 
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+    // Valida formato E existência da data no calendário (rejeita 2026-13-45).
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $data, $md)
+        || !checkdate((int) $md[2], (int) $md[3], (int) $md[1])) {
         erro('Data inválida (use AAAA-MM-DD).');
     }
     if ($setor === '' || $atividade === '') {
@@ -128,6 +130,9 @@ if ($rota === '/registros' && $metodo === 'POST') {
     }
     if ($minutos <= 0) {
         erro('Informe o tempo trabalhado.');
+    }
+    if ($minutos > 1440) {
+        erro('Tempo acima do limite de um dia (máx. 24h).');
     }
 
     $st = $PDO->prepare('INSERT INTO registros (membro_id, data, setor, atividade, minutos, descricao)

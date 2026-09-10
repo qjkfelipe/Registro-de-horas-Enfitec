@@ -524,7 +524,7 @@ export default function Gestao() {
               <button className="mes-btn mes-btn--claro" onClick={() => setMesView((m) => deslocarMes(m, -1))}
                 aria-label="Mês anterior">‹</button>
               <span className="mes-rotulo">{rotuloMes(mesView)}</span>
-              <button className="mes-btn mes-btn--claro" onClick={() => setMesView((m) => deslocarMes(m, 1))}
+              <button className="mes-btn mes-btn--claro" onClick={() => setMesView((m) => (m < mesAtual() ? deslocarMes(m, 1) : m))}
                 disabled={!podeAvancar} aria-label="Próximo mês">›</button>
             </div>
           </div>
