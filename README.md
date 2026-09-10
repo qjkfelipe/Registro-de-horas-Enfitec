@@ -188,3 +188,6 @@ Hardening de segurança aplicado (ver `docs/CHECKLIST-SERVIDOR-UFRGS.md`).
 Próximo passo: **deploy no servidor da UFRGS** (ver `docs/GUIA-DEPLOY-UFRGS.md`).
 
 Projeto desenvolvido para a **ENFITEC Júnior** — *"Se não for impossível, a gente faz!"*
+
+<!-- teste de commit — pode remover esta linha -->
+
