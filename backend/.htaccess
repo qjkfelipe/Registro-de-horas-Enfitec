@@ -17,3 +17,27 @@
         Deny from all
     </IfModule>
 </FilesMatch>
+
+# Bloqueia acesso web direto a QUALQUER .php (scripts de admin como seed.php,
+# migrar.php e importar_membros.php não devem ser executáveis pela URL).
+<FilesMatch "\.php$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Exceção: o front controller é o único ponto de entrada permitido.
+# O rewrite acima reescreve as rotas para ele internamente.
+<FilesMatch "^index\.php$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</FilesMatch>

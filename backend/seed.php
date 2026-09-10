@@ -7,6 +7,12 @@
 // Sem argumentos, cria um conjunto de exemplo.
 declare(strict_types=1);
 
+// Segurança: script administrativo só roda via linha de comando, nunca pela web.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    exit('Acesso negado: execute este script pela linha de comando.');
+}
+
 require_once __DIR__ . '/lib/bootstrap.php'; // $CONFIG, $PDO, helpers
 require __DIR__ . '/migrar.php';             // garante que as tabelas existem
 

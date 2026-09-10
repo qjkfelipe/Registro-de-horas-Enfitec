@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/bootstrap.php';   // define $CONFIG, $PDO e helpers
 require_once __DIR__ . '/lib/auth.php';
+require_once __DIR__ . '/lib/ratelimit.php';   // limitador de tentativas de login
 
 aplicar_cors($CONFIG);
 
@@ -49,12 +50,19 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
     $d = corpo_json();
     $email = strtolower(trim($d['email'] ?? ''));
     $senha = (string) ($d['senha'] ?? '');
+
+    // Rate limit: bloqueia após várias falhas por IP+e-mail (anti força-bruta).
+    $rlChave = rl_chave($email);
+    rl_verificar($PDO, $rlChave); // responde 429 se estiver bloqueado
+
     $membro = membro_por_email($PDO, $email);
     if (!$membro || !(int) $membro['ativo'] || empty($membro['senha_hash'])
         || !password_verify($senha, $membro['senha_hash'])) {
+        rl_falha($PDO, $rlChave); // contabiliza a falha (pode disparar o bloqueio)
         sleep(1); // atraso proposital para dificultar força bruta
         erro('E-mail ou senha inválidos.', 401);
     }
+    rl_sucesso($PDO, $rlChave); // login OK: zera o contador dessa chave
     $sessao = jwt_criar(['sub' => (string) $membro['id'], 'tipo' => 'sessao'], $CONFIG['jwt_secret'], $CONFIG['sessao_expira_min']);
     responder([
         'access_token' => $sessao,
@@ -72,8 +80,13 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
 if ($rota === '/auth/trocar-senha' && $metodo === 'POST') {
     $m = exigir_login($PDO, $CONFIG);
     $nova = (string) (corpo_json()['nova_senha'] ?? '');
-    if (strlen($nova) < 6) {
-        erro('A nova senha deve ter ao menos 6 caracteres.');
+    // Regra de senha forte (espelha a validação do front — nunca confie só no cliente):
+    // mínimo de 8 caracteres, com letra maiúscula, número e caractere especial.
+    if (strlen($nova) < 8
+        || !preg_match('/[A-Z]/', $nova)
+        || !preg_match('/[0-9]/', $nova)
+        || !preg_match('/[^A-Za-z0-9]/', $nova)) {
+        erro('A senha precisa ter ao menos 8 caracteres, incluindo letra maiúscula, número e caractere especial.');
     }
     $hash = password_hash($nova, PASSWORD_DEFAULT);
     $PDO->prepare('UPDATE membros SET senha_hash = ?, senha_provisoria = 0 WHERE id = ?')

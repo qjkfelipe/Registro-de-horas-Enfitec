@@ -11,6 +11,14 @@ CREATE TABLE IF NOT EXISTS membros (
     criado_em  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Controle de tentativas de login (rate limit / anti força-bruta).
+CREATE TABLE IF NOT EXISTS login_tentativas (
+    chave         VARCHAR(190) NOT NULL PRIMARY KEY,   -- IP + e-mail
+    tentativas    INT          NOT NULL DEFAULT 0,
+    bloqueado_ate INT          NOT NULL DEFAULT 0,      -- epoch (0 = não bloqueado)
+    atualizado_em INT          NOT NULL DEFAULT 0       -- epoch da última tentativa
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS registros (
     id         INT AUTO_INCREMENT PRIMARY KEY,
     membro_id  INT          NOT NULL,

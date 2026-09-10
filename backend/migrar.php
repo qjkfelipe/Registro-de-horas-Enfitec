@@ -3,6 +3,12 @@
 // alternativa ao import do schema.sql. Rode:  php migrar.php
 declare(strict_types=1);
 
+// Segurança: script administrativo só roda via linha de comando, nunca pela web.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    exit('Acesso negado: execute este script pela linha de comando.');
+}
+
 $CONFIG = require __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/bootstrap.php'; // já cria $PDO a partir do config
 
@@ -30,6 +36,12 @@ if ($sqlite) {
         criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )");
     $PDO->exec("CREATE INDEX IF NOT EXISTS idx_membro_data ON registros(membro_id, data)");
+    $PDO->exec("CREATE TABLE IF NOT EXISTS login_tentativas (
+        chave TEXT PRIMARY KEY,
+        tentativas INTEGER NOT NULL DEFAULT 0,
+        bloqueado_ate INTEGER NOT NULL DEFAULT 0,
+        atualizado_em INTEGER NOT NULL DEFAULT 0
+    )");
 } else {
     // MySQL/MariaDB: executa o schema.sql (removendo as linhas de comentário antes).
     $sql = file_get_contents(__DIR__ . '/schema.sql');

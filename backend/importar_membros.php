@@ -13,6 +13,12 @@
 // CPF, RG, endereço e demais dados pessoais NÃO são usados nem guardados.
 declare(strict_types=1);
 
+// Segurança: script administrativo só roda via linha de comando, nunca pela web.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    exit('Acesso negado: execute este script pela linha de comando.');
+}
+
 require_once __DIR__ . '/lib/bootstrap.php'; // $PDO
 require __DIR__ . '/migrar.php';             // garante as tabelas
 

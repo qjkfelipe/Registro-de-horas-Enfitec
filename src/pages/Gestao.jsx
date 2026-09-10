@@ -451,7 +451,10 @@ export default function Gestao() {
   function baixarCSV() {
     const sep = ';'
     const esc = (v) => {
-      const s = String(v ?? '')
+      let s = String(v ?? '')
+      // Anti-injeção de fórmula (CSV injection): células iniciadas por = + - @ (ou tab/CR)
+      // são executadas como fórmula pelo Excel/Sheets. Prefixa com aspa simples p/ virar texto.
+      if (/^[=+\-@\t\r]/.test(s)) s = "'" + s
       return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
     }
     const dataBR = (iso) => String(iso).split('-').reverse().join('/')
