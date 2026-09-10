@@ -19,6 +19,7 @@ const TIPOS = [
   'Reunião de alinhamento',
   'Reunião com cliente',
   'Criação de conteúdo',
+  'Evento',
   'Faxina na sala',
   'Outro',
 ]
