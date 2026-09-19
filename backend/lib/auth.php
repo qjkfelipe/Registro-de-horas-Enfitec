@@ -20,7 +20,7 @@ function membro_por_id(PDO $pdo, int $id): ?array
 }
 
 // Lê o "Authorization: Bearer ..." e devolve o membro logado (ou null).
-function membro_logado(PDO $pdo, array $config): ?array
+function membro_logado(PDO $pdo, array $config, array $tiposAceitos = ['sessao']): ?array
 {
     $headers = function_exists('getallheaders') ? getallheaders() : [];
     $auth = $headers['Authorization'] ?? $headers['authorization']
@@ -30,7 +30,9 @@ function membro_logado(PDO $pdo, array $config): ?array
         return null;
     }
     $payload = jwt_verificar(trim($m[1]), $config['jwt_secret']);
-    if (!$payload || ($payload['tipo'] ?? '') !== 'sessao') {
+    // Por padrão só o token de sessão vale; o token restrito de senha provisória
+    // (tipo 'senha_provisoria') só é aceito onde for explicitamente permitido.
+    if (!$payload || !in_array($payload['tipo'] ?? '', $tiposAceitos, true)) {
         return null;
     }
     $membro = membro_por_id($pdo, (int) $payload['sub']);

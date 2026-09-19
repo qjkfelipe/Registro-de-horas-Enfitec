@@ -63,7 +63,11 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
         erro('E-mail ou senha inválidos.', 401);
     }
     rl_sucesso($PDO, $rlChave); // login OK: zera o contador dessa chave
-    $sessao = jwt_criar(['sub' => (string) $membro['id'], 'tipo' => 'sessao', 'ver' => (int) $membro['token_version']], $CONFIG['jwt_secret'], $CONFIG['sessao_expira_min']);
+    // Se a senha ainda é provisória, o token é RESTRITO: só serve p/ trocar a senha e dura 15 min.
+    // As rotas de dados (exigir_login) rejeitam esse tipo — a troca de senha deixa de ser só do front.
+    $tipoTok = ((int) $membro['senha_provisoria'] === 1) ? 'senha_provisoria' : 'sessao';
+    $expiraTok = $tipoTok === 'sessao' ? $CONFIG['sessao_expira_min'] : 15;
+    $sessao = jwt_criar(['sub' => (string) $membro['id'], 'tipo' => $tipoTok, 'ver' => (int) $membro['token_version']], $CONFIG['jwt_secret'], $expiraTok);
     responder([
         'access_token' => $sessao,
         'token_type' => 'bearer',
@@ -78,7 +82,11 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
 }
 
 if ($rota === '/auth/trocar-senha' && $metodo === 'POST') {
-    $m = exigir_login($PDO, $CONFIG);
+    // Única rota que aceita o token restrito de senha provisória, além do de sessão normal.
+    $m = membro_logado($PDO, $CONFIG, ['sessao', 'senha_provisoria']);
+    if (!$m) {
+        erro('Não autenticado', 401);
+    }
     $nova = (string) (corpo_json()['nova_senha'] ?? '');
     // Regra de senha forte (espelha a validação do front — nunca confie só no cliente):
     // mínimo de 8 caracteres, com letra maiúscula, número e caractere especial.

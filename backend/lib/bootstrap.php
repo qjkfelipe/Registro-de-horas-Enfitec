@@ -17,6 +17,25 @@ if (!function_exists('str_contains')) {
     }
 }
 
+// ---- Erros (M-01): na web, nunca exibir detalhes internos ao cliente ----
+// Captura qualquer exceção/Error não tratado (falha de banco, tipo inesperado no JSON,
+// etc.), registra no log do servidor e responde 500 genérico — corrigindo também o
+// HTTP 200 indevido de fatais que ocorrem antes de http_response_code().
+if (PHP_SAPI !== 'cli') {
+    ini_set('display_errors', '0');
+    ini_set('log_errors', '1');
+    error_reporting(E_ALL);
+    set_exception_handler(function (Throwable $e): void {
+        error_log('[registrador-horas] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+        if (!headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode(['erro' => 'Erro interno. Tente novamente mais tarde.']);
+        exit;
+    });
+}
+
 // ---- Config ----
 $config_path = __DIR__ . '/../config.php';
 if (!file_exists($config_path)) {

@@ -41,14 +41,15 @@ function upsert(PDO $pdo, string $email, string $nome, string $role, ?string $se
 }
 
 // Uso: php seed.php email "Nome" [membro|gestor] [senha]
+// Sem senha, gera uma provisória aleatória e a exibe UMA vez. Sem credenciais no código.
 $args = $argv ?? [];
 if (count($args) >= 3) {
-    // Senha definida por linha de comando entra como provisória (o usuário troca no 1º acesso).
-    upsert($PDO, $args[1], $args[2], $args[3] ?? 'membro', $args[4] ?? null, isset($args[4]));
+    $senha = $args[4] ?? bin2hex(random_bytes(9)); // 18 caracteres aleatórios
+    upsert($PDO, $args[1], $args[2], $args[3] ?? 'membro', $senha, true); // sempre provisória
+    echo "Senha provisória de {$args[1]}: $senha\n";
+    echo "Anote agora — ela não será exibida de novo. O membro troca no 1º acesso.\n";
 } else {
-    echo "Cadastrando membros de exemplo:\n";
-    // Conta de gestão: senha inicial PROVISÓRIA (obrigatório trocar no 1º acesso).
-    upsert($PDO, 'enfitecjunior@gmail.com', 'Gestão ENFITEC', 'gestor', 'enfitec123', true);
-    // Membro de exemplo com senha PROVISÓRIA (troca no 1º acesso).
-    upsert($PDO, 'felipe.baseggio@enfitecjunior.com', 'Felipe Baseggio', 'membro', 'senha123', true);
+    fwrite(STDERR, "Uso: php seed.php <email> \"<Nome>\" [membro|gestor] [senha]\n");
+    fwrite(STDERR, "Sem a senha, uma provisória aleatória é gerada e exibida uma única vez.\n");
+    exit(1);
 }
