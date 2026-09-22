@@ -43,7 +43,8 @@ function jwt_verificar(string $token, string $segredo): ?array
     if (!is_array($payload)) {
         return null;
     }
-    if (isset($payload['exp']) && time() >= (int) $payload['exp']) {
+    // Exige exp e rejeita token expirado (B-01 — falha fechada: sem exp, sem acesso).
+    if (!isset($payload['exp']) || time() >= (int) $payload['exp']) {
         return null;
     }
     return $payload;

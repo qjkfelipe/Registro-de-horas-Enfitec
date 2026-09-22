@@ -29,7 +29,7 @@ $metodo = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // ---- Utilidades de mês ----
 function intervalo_do_mes(string $mes): array
 {
-    if (!preg_match('/^\d{4}-\d{2}$/', $mes)) {
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mes)) {
         erro('Mês inválido (use AAAA-MM).');
     }
     [$ano, $m] = array_map('intval', explode('-', $mes));
@@ -56,13 +56,25 @@ if ($rota === '/auth/login-senha' && $metodo === 'POST') {
     rl_verificar($PDO, $rlChave); // responde 429 se estiver bloqueado
 
     $membro = membro_por_email($PDO, $email);
-    if (!$membro || !(int) $membro['ativo'] || empty($membro['senha_hash'])
-        || !password_verify($senha, $membro['senha_hash'])) {
+    // B-02: roda SEMPRE um password_verify (contra hash fictício quando o e-mail não
+    // existe) para não revelar a existência da conta pela diferença de tempo de resposta.
+    $hashRef = ($membro && !empty($membro['senha_hash']))
+        ? $membro['senha_hash']
+        : '$2y$12$' . str_repeat('.', 53); // bcrypt válido (custo 12), nunca casa
+    $senhaOk = password_verify($senha, $hashRef);
+    if (!$membro || !(int) $membro['ativo'] || empty($membro['senha_hash']) || !$senhaOk) {
         rl_falha($PDO, $rlChave); // contabiliza a falha (pode disparar o bloqueio)
-        sleep(1); // atraso proposital para dificultar força bruta
+        // A-02: jitter curto em vez de sleep(1) — o bloqueio real é a contagem (rl_*),
+        // e não segurar um worker do Apache por 1s inteiro (o que virava vetor de DoS).
+        usleep(random_int(150000, 400000));
         erro('E-mail ou senha inválidos.', 401);
     }
     rl_sucesso($PDO, $rlChave); // login OK: zera o contador dessa chave
+    // 4.13: reprocessa o hash se o custo padrão do bcrypt mudou (PHP 8.4 subiu p/ 12).
+    if (password_needs_rehash($membro['senha_hash'], PASSWORD_DEFAULT)) {
+        $PDO->prepare('UPDATE membros SET senha_hash = ? WHERE id = ?')
+            ->execute([password_hash($senha, PASSWORD_DEFAULT), $membro['id']]);
+    }
     // Se a senha ainda é provisória, o token é RESTRITO: só serve p/ trocar a senha e dura 15 min.
     // As rotas de dados (exigir_login) rejeitam esse tipo — a troca de senha deixa de ser só do front.
     $tipoTok = ((int) $membro['senha_provisoria'] === 1) ? 'senha_provisoria' : 'sessao';
@@ -132,19 +144,30 @@ if ($rota === '/registros' && $metodo === 'POST') {
     $minutos = (int) ($d['minutos'] ?? 0);
     $descricao = isset($d['descricao']) && trim((string) $d['descricao']) !== '' ? trim((string) $d['descricao']) : null;
 
-    // Valida formato E existência da data no calendário (rejeita 2026-13-45).
+    // Data: formato + calendário real (rejeita 2026-13-45) + não pode ser futura.
     if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $data, $md)
-        || !checkdate((int) $md[2], (int) $md[3], (int) $md[1])) {
-        erro('Data inválida (use AAAA-MM-DD).');
+        || !checkdate((int) $md[2], (int) $md[3], (int) $md[1])
+        || $data > date('Y-m-d')) {
+        erro('Data inválida ou futura (use AAAA-MM-DD).');
     }
-    if ($setor === '' || $atividade === '') {
-        erro('Setor e atividade são obrigatórios.');
+    // Whitelist de setor e atividade (A-04) — deve espelhar AREAS/TIPOS do front-end.
+    $SETORES = ['Presidência', 'Administrativo-Financeiro', 'Comercial', 'Projetos', 'Gestão de Pessoas', 'Marketing'];
+    $ATIVIDADES = ['Visita técnica', 'Pesquisa', 'Desenvolvimento de projeto', 'Reunião de alinhamento',
+        'Reunião com cliente', 'Criação de conteúdo', 'Evento', 'Faxina na sala', 'Outro'];
+    if (!in_array($setor, $SETORES, true)) {
+        erro('Setor inválido.');
+    }
+    if (!in_array($atividade, $ATIVIDADES, true)) {
+        erro('Atividade inválida.');
     }
     if ($minutos <= 0) {
         erro('Informe o tempo trabalhado.');
     }
     if ($minutos > 1440) {
         erro('Tempo acima do limite de um dia (máx. 24h).');
+    }
+    if ($descricao !== null && mb_strlen($descricao) > 1000) {
+        erro('A descrição deve ter no máximo 1000 caracteres.');
     }
 
     $st = $PDO->prepare('INSERT INTO registros (membro_id, data, setor, atividade, minutos, descricao)

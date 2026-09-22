@@ -36,6 +36,9 @@ if (PHP_SAPI !== 'cli') {
     });
 }
 
+// ---- Fuso horário da aplicação (o servidor pode estar em UTC) ----
+date_default_timezone_set('America/Sao_Paulo');
+
 // ---- Config ----
 $config_path = __DIR__ . '/../config.php';
 if (!file_exists($config_path)) {
@@ -50,8 +53,13 @@ $CONFIG = require $config_path;
 // e persiste num arquivo protegido — evita tokens forjáveis por esquecimento.
 if (($CONFIG['jwt_secret'] ?? '') === 'troque-por-um-segredo-bem-aleatorio') {
     $arqSegredo = __DIR__ . '/.jwt_secret';
-    if (!file_exists($arqSegredo)) {
-        file_put_contents($arqSegredo, bin2hex(random_bytes(32)));
+    // Criação ATÔMICA (M-08): 'x' falha se o arquivo já existir — evita a corrida em
+    // que duas requisições simultâneas geram segredos diferentes (agravada no NFS).
+    // Ainda assim, o ideal é definir jwt_secret no config.php (aí este bloco nem roda).
+    $fp = @fopen($arqSegredo, 'x');
+    if ($fp !== false) {
+        fwrite($fp, bin2hex(random_bytes(32)));
+        fclose($fp);
     }
     $CONFIG['jwt_secret'] = trim((string) file_get_contents($arqSegredo));
 }
@@ -62,9 +70,33 @@ function aplicar_cors(array $config): void
     header('Access-Control-Allow-Origin: ' . $config['frontend_url']);
     header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
     header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    header('Vary: Origin'); // B-06
+
+    // ---- Cabeçalhos de segurança (M-06). A API só devolve JSON, então CSP é restritiva. ----
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: DENY');
+    header('Referrer-Policy: no-referrer');
+    header('Cache-Control: no-store');
+    header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
+
     if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
         http_response_code(204);
         exit;
+    }
+
+    // ---- Exigir HTTPS (M-06), exceto em localhost. ----
+    // X-Forwarded-Proto só é confiável se houver mesmo um proxy reverso na frente
+    // (config 'atras_de_proxy'); sem isso, qualquer cliente forjaria o cabeçalho.
+    $atrasDeProxy = ($config['atras_de_proxy'] ?? false) === true;
+    $https = ($_SERVER['HTTPS'] ?? '') === 'on'
+          || ($atrasDeProxy && ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $host = $_SERVER['SERVER_NAME'] ?? '';
+    if ($https) {
+        // Sem includeSubDomains: em subdiretório de site institucional, isso afetaria
+        // todo o if.ufrgs.br — não cabe a esta aplicação decidir.
+        header('Strict-Transport-Security: max-age=31536000');
+    } elseif (($config['exigir_https'] ?? true) && $host !== 'localhost' && $host !== '127.0.0.1') {
+        erro('Esta API exige HTTPS.', 403);
     }
 }
 

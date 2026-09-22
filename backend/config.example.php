@@ -14,9 +14,18 @@ return [
     'db_pass' => null,
 
     // ---- Segurança ----
-    // Troque por um valor aleatório longo.
+    // OBRIGATÓRIO em produção: gere um valor próprio e cole aqui —
+    //   php -r 'echo bin2hex(random_bytes(32)), "\n";'
+    // Definir aqui evita a geração automática em disco (corrida no NFS — M-08).
+    // Trocar este valor invalida TODAS as sessões ativas (botão de emergência).
     'jwt_secret'        => 'troque-por-um-segredo-bem-aleatorio',
-    'sessao_expira_min' => 60 * 24 * 7, // 7 dias
+    'sessao_expira_min' => 60 * 24 * 7, // 7 dias (considere 12–24 h em produção — M-02)
+
+    // Exigir HTTPS (M-06). Deixe true em produção; localhost é sempre isento.
+    'exigir_https'  => true,
+    // Só marque true se houver DE FATO um proxy reverso na frente (senão o
+    // cabeçalho X-Forwarded-Proto seria forjável e burlaria a exigência de HTTPS).
+    'atras_de_proxy' => false,
 
     // ---- Front-end (CORS) ----
     'frontend_url' => 'http://localhost:5173',
