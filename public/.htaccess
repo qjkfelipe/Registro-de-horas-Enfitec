@@ -1,0 +1,24 @@
+# .htaccess do front-end (SPA React). O Vite copia este arquivo de public/ para dist/.
+# >>> AJUSTE o RewriteBase abaixo se o caminho de publicação for diferente. <<<
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /enfitecjr/registro-horas/
+
+    # Força HTTPS (M-06).
+    RewriteCond %{HTTPS} !=on
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # SPA: tudo que não for arquivo/pasta real cai no index.html (roteamento do React).
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# Cabeçalhos de segurança do front-end (M-06).
+# 'unsafe-inline' em style-src é necessário para os estilos inline do app.
+# connect-src 'self' basta porque a API fica na MESMA origem (subdiretório).
+<IfModule mod_headers.c>
+    Header always set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+</IfModule>
