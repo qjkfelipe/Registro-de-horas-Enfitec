@@ -1,14 +1,21 @@
+# Garante que o cabeçalho Authorization chegue ao PHP em CGI/FastCGI/FPM (4.14).
+<IfModule mod_cgi.c>
+    CGIPassAuth On
+</IfModule>
+
 # Roteia todas as requisições para index.php (exceto arquivos/pastas reais).
 <IfModule mod_rewrite.c>
     RewriteEngine On
+    # Preserva o Authorization (alternativa universal ao CGIPassAuth) — 4.14.
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
     RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
-# Protege arquivos sensíveis (config e banco SQLite).
-<FilesMatch "(^config\.php$|\.db$|\.sqlite$)">
+# Protege arquivos sensíveis (config, banco, schema, docs e arquivos ocultos).
+<FilesMatch "(^config\.php$|\.db$|\.sqlite$|^schema\.sql$|\.md$|^\.)">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>

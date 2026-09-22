@@ -10,6 +10,9 @@ dist/
 # Ferramentas locais
 .claude/
 
+# Artefatos do SO
+.DS_Store
+
 # Backend: segredos e banco local
 backend/config.php
 backend/*.db
